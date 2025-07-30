@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 import { Rdb } from './fileSystemProvider';
 
+let rdb: Rdb;
+
 export function activate(context: vscode.ExtensionContext) {
 
 	console.log('Rdb says "Hello"');
 
-	const rdb = new Rdb();
+	rdb  = new Rdb();
 	context.subscriptions.push(vscode.workspace.registerFileSystemProvider('rdb', rdb, { isCaseSensitive: true }));
 	let initialized = false;
 
-	context.subscriptions.push(vscode.commands.registerCommand('rdb.reset', _ => {
-		for (const [name] of rdb.readDirectory(vscode.Uri.parse('rdb:/'))) {
+	context.subscriptions.push(vscode.commands.registerCommand('rdb.reset', async _ => {
+		for (const [name] of await rdb.readDirectory(vscode.Uri.parse('rdb:/'))) {
 			rdb.delete(vscode.Uri.parse(`rdb:/${name}`));
 		}
 		initialized = false;
@@ -68,6 +70,12 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.parse('rdb:/'), name: "Rdb - Sample" });
 	}));
 }
+
+/* export async function deactivate() {
+	console.log('Rdb says "Goodbye"');
+	await rdb.close();
+}*/
+
 
 function randomData(lineCnt: number, lineLen = 155): Buffer {
 	const lines: string[] = [];

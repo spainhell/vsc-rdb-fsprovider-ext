@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+option csharp_namespace = "GrpcServerLib";
+
+package rdb;
+
+// The RDB services definition
+service RdbService {
+  rpc OpenRDB(OpenRDBRequest) returns (OpenRDBResponse);
+  rpc GetChaptersCount(Empty) returns (ChaptersCountResponse);
+  rpc GetChaptersList(Empty) returns (ChaptersListResponse);
+  rpc LoadChapter(LoadChapterRequest) returns (LoadChapterResponse);
+  rpc SaveChapter(SaveChapterRequest) returns (SaveChapterResponse);
+  rpc ClearRdb(Empty) returns (ClearRdbResponse);
+  rpc CloseRdb(Empty) returns (CloseRdbResponse);
+}
+
+// Request and Response messages
+
+message Empty {}
+
+message OpenRDBRequest {
+  string rdb_name = 1;
+}
+
+message OpenRDBResponse {
+  int32 records_count = 1;
+}
+
+message ChaptersCountResponse {
+  int32 count = 1;
+}
+
+message ChaptersListResponse {
+  repeated LoadChapterResponse chapters_list = 1;
+}
+
+message LoadChapterRequest {
+  int32 chapter_number = 1;
+}
+
+message LoadChapterResponse {
+  int32 chapter_number = 1;
+  string chapter_type = 2;
+  string chapter_name = 3;
+  string chapter_text = 4;
+}
+
+message ClearRdbResponse {
+  int32 result = 1;
+}
+
+message SaveChapterRequest {
+  int32 chapter_number = 1;
+  string chapter_type = 2;
+  string chapter_name = 3;
+  string chapter_text = 4;
+}
+
+message SaveChapterResponse {
+  int32 total_records_count = 1;
+}
+
+message CloseRdbResponse {
+  int32 final_records_count = 1;
+}

@@ -1,15 +1,15 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-
 import * as path from 'path';
 import * as vscode from 'vscode';
+
+import { GrpcRdbClient } from './grpc/index';
+const SERVER_ADDRESS = 'localhost:7877';
 
 export class File implements vscode.FileStat {
 
 	type: vscode.FileType;
+	chOrder: number;
+	chType: string;
+	chName: string;
 	ctime: number;
 	mtime: number;
 	size: number;
@@ -17,12 +17,15 @@ export class File implements vscode.FileStat {
 	name: string;
 	data?: Uint8Array;
 
-	constructor(name: string) {
+	constructor(chOrder: number, chType: string, chName: string) {
 		this.type = vscode.FileType.File;
+		this.chOrder = chOrder;
+		this.chType = chType;
+		this.chName = chName;
 		this.ctime = Date.now();
 		this.mtime = Date.now();
 		this.size = 0;
-		this.name = name;
+		this.name = `${chType}_${chName}`;
 	}
 }
 
@@ -50,34 +53,79 @@ export type Entry = File | Directory;
 
 export class Rdb implements vscode.FileSystemProvider {
 
+	private client: GrpcRdbClient | undefined;
+	private uriToId = new Map<string, number>();
+	
+	constructor() {
+		try {
+			this.client = new GrpcRdbClient(SERVER_ADDRESS);
+			console.log('gRPC client initialized successfully');
+			this.client.openRDB({ rdbName: 'CESTAK.RDB' }).then(response => {
+				console.log('RDB opened successfully:', response);
+			});
+		} catch (error) {
+			console.error('Error initializing gRPC client:', error);
+		}
+	}
+	
 	root = new Directory('');
 
 	// --- manage file metadata
 
 	stat(uri: vscode.Uri): vscode.FileStat {
-		return this._lookup(uri, false);
+		console.log('stat called for', uri.toString());
+
+		const fileId = this.uriToId.get(uri.toString());
+		if (!fileId) {
+			// throw vscode.FileSystemError.FileNotFound(uri);
+			return new Directory(path.posix.basename(uri.path));
+		}
+
+		return new File(fileId, 'dummy', 'dummy');
+
+		/*console.log('stat called for', uri.toString());
+		return this._lookup(uri, false);*/
 	}
 
-	readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
-		const entry = this._lookupAsDirectory(uri, false);
-		const result: [string, vscode.FileType][] = [];
-		for (const [name, child] of entry.entries) {
-			result.push([name, child.type]);
+	async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+		console.log('readDirectory called for', uri.toString());
+		if (!this.client) {
+			throw new Error('gRPC client is not initialized');
 		}
-		return result;
+		if (uri.scheme !== 'rdb') {
+			throw vscode.FileSystemError.NoPermissions(uri);
+		}
+		const response = await this.client.getChaptersList();
+		return response.chaptersList.map(chapter => {
+			const name = (`${chapter.chapterNumber}_${chapter.chapterName}`).trim() + `.${chapter.chapterType.trim()}`;
+			this.uriToId.set(`rdb:/${name}`, chapter.chapterNumber);
+			return [`${name}`, vscode.FileType.File] as [string, vscode.FileType];
+		});
 	}
 
 	// --- manage file contents
 
-	readFile(uri: vscode.Uri): Uint8Array {
-		const data = this._lookupAsFile(uri, false).data;
-		if (data) {
-			return data;
+	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+		if (!this.client) {
+			throw new Error('gRPC client is not initialized');
 		}
-		throw vscode.FileSystemError.FileNotFound();
+
+		const fileId = this.uriToId.get(uri.toString());
+		if (!fileId) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
+
+		console.log('readFile called for', uri.toString());
+		const response = await this.client.loadChapter({ chapterNumber: fileId });
+		if (!response) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
+
+		return response.chapterText ? Buffer.from(response.chapterText, 'utf8') : new Uint8Array(0);
 	}
 
 	writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): void {
+		console.log('writeFile called for', uri.toString());
 		const basename = path.posix.basename(uri.path);
 		const parent = this._lookupParentDirectory(uri);
 		let entry = parent.entries.get(basename);
@@ -91,7 +139,7 @@ export class Rdb implements vscode.FileSystemProvider {
 			throw vscode.FileSystemError.FileExists(uri);
 		}
 		if (!entry) {
-			entry = new File(basename);
+			entry = new File(0,basename, basename); // 0 = new RDB record
 			parent.entries.set(basename, entry);
 			this._fireSoon({ type: vscode.FileChangeType.Created, uri });
 		}
@@ -105,6 +153,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	// --- manage files/folders
 
 	rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): void {
+		console.log('rename called for', oldUri.toString(), 'to', newUri.toString());
 
 		if (!options.overwrite && this._lookup(newUri, true)) {
 			throw vscode.FileSystemError.FileExists(newUri);
@@ -127,6 +176,8 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	delete(uri: vscode.Uri): void {
+		console.log('delete called for', uri.toString());
+
 		const dirname = uri.with({ path: path.posix.dirname(uri.path) });
 		const basename = path.posix.basename(uri.path);
 		const parent = this._lookupAsDirectory(dirname, false);
@@ -140,6 +191,8 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	createDirectory(uri: vscode.Uri): void {
+		console.log('createDirectory called for', uri.toString());
+
 		const basename = path.posix.basename(uri.path);
 		const dirname = uri.with({ path: path.posix.dirname(uri.path) });
 		const parent = this._lookupAsDirectory(dirname, false);
@@ -156,6 +209,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	private _lookup(uri: vscode.Uri, silent: false): Entry;
 	private _lookup(uri: vscode.Uri, silent: boolean): Entry | undefined;
 	private _lookup(uri: vscode.Uri, silent: boolean): Entry | undefined {
+		console.log('lookup called for', uri.toString());
 		const parts = uri.path.split('/');
 		let entry: Entry = this.root;
 		for (const part of parts) {
@@ -179,6 +233,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	private _lookupAsDirectory(uri: vscode.Uri, silent: boolean): Directory {
+		console.log('lookupAsDirectory called for', uri.toString());
 		const entry = this._lookup(uri, silent);
 		if (entry instanceof Directory) {
 			return entry;
@@ -187,6 +242,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	private _lookupAsFile(uri: vscode.Uri, silent: boolean): File {
+		console.log('lookupAsFile called for', uri.toString());
 		const entry = this._lookup(uri, silent);
 		if (entry instanceof File) {
 			return entry;
@@ -195,6 +251,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	private _lookupParentDirectory(uri: vscode.Uri): Directory {
+		console.log('lookupParentDirectory called for', uri.toString());
 		const dirname = uri.with({ path: path.posix.dirname(uri.path) });
 		return this._lookupAsDirectory(dirname, false);
 	}
@@ -213,6 +270,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	}
 
 	private _fireSoon(...events: vscode.FileChangeEvent[]): void {
+		console.log('Firing events:', events);
 		this._bufferedEvents.push(...events);
 
 		if (this._fireSoonHandle) {
@@ -223,5 +281,14 @@ export class Rdb implements vscode.FileSystemProvider {
 			this._emitter.fire(this._bufferedEvents);
 			this._bufferedEvents.length = 0;
 		}, 5);
+	}
+
+	public async close(): Promise<void> {
+		if (this.client) {
+			await this.client.closeRdb();
+			this.client.close();
+			this.client = undefined;
+			console.log('gRPC client closed');
+		}
 	}
 }

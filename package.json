@@ -79,6 +79,10 @@
 		"lint": "eslint",
 		"watch": "tsc -watch -p ./"
 	},
+	"dependencies": {
+    "@grpc/grpc-js": "^1.9.13",
+    "@grpc/proto-loader": "^0.7.10"
+  	},
 	"devDependencies": {
 		"@eslint/js": "^9.13.0",
 		"@stylistic/eslint-plugin": "^2.9.0",
