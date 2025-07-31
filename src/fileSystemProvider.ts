@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { GrpcRdbClient } from './grpc/index';
+import { GrpcRdbClient, LoadChapterResponse } from './grpc/index';
 const SERVER_ADDRESS = 'localhost:7877';
 
 export class File implements vscode.FileStat {
@@ -54,7 +54,6 @@ export type Entry = File | Directory;
 export class Rdb implements vscode.FileSystemProvider {
 
 	private client: GrpcRdbClient | undefined;
-	private uriToId = new Map<string, number>();
 	
 	constructor() {
 		try {
@@ -75,7 +74,7 @@ export class Rdb implements vscode.FileSystemProvider {
 	stat(uri: vscode.Uri): vscode.FileStat {
 		console.log('stat called for', uri.toString());
 
-		const fileId = this.uriToId.get(uri.toString());
+		const fileId = this.getIdFromUri(uri);
 		if (!fileId) {
 			// throw vscode.FileSystemError.FileNotFound(uri);
 			return new Directory(path.posix.basename(uri.path));
@@ -97,11 +96,11 @@ export class Rdb implements vscode.FileSystemProvider {
 		}
 		const response = await this.client.getChaptersList();
 		return response.chaptersList.map(chapter => {
-			const name = (`${chapter.chapterNumber}_${chapter.chapterName}`).trim() + `.${chapter.chapterType.trim()}`;
-			this.uriToId.set(`rdb:/${name}`, chapter.chapterNumber);
+			const name = this.getFileLabel(chapter);
 			return [`${name}`, vscode.FileType.File] as [string, vscode.FileType];
 		});
 	}
+	
 
 	// --- manage file contents
 
@@ -110,7 +109,7 @@ export class Rdb implements vscode.FileSystemProvider {
 			throw new Error('gRPC client is not initialized');
 		}
 
-		const fileId = this.uriToId.get(uri.toString());
+		const fileId = this.getIdFromUri(uri);
 		if (!fileId) {
 			throw vscode.FileSystemError.FileNotFound(uri);
 		}
@@ -289,6 +288,25 @@ export class Rdb implements vscode.FileSystemProvider {
 			this.client.close();
 			this.client = undefined;
 			console.log('gRPC client closed');
+		}
+	}
+
+	private getIdFromUri(uri: vscode.Uri): number | undefined {
+		const parts = uri.path.split('/');
+		const lastPart = parts[parts.length - 1];
+		const match = lastPart.match(/^(\d+)\s?/);
+		if (match) {
+			return parseInt(match[1], 10);
+		}
+		return undefined;
+	}
+	
+	private getFileLabel(chapter: LoadChapterResponse) {
+		switch (chapter.chapterType) {
+			case ' ':
+				return `${chapter.chapterNumber.toString().padStart(4, '0')} _ ${chapter.chapterName.trim()}`;
+			default:
+				return `${chapter.chapterNumber.toString().padStart(4, '0')} ${chapter.chapterType.trim()} ${chapter.chapterName.trim()}.pas`;
 		}
 	}
 }
