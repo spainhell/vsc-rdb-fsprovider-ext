@@ -17,7 +17,9 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onFileSystem:rdb"
+		"onCommand:extension.rdb.workspaceInit",
+		"onFileSystem:rdb",
+		"onStartupFinished"
 	],
 	"main": "./out/src/extension",
 	"contributes": {
@@ -25,6 +27,11 @@
 			{
 				"command": "rdb.workspaceInit",
 				"title": "Setup Workspace",
+				"category": "Rdb"
+			},
+			{
+				"command": "rdb.openRdbFile",
+				"title": "Open RDB File",
 				"category": "Rdb"
 			},
 			{
@@ -51,6 +58,10 @@
 		"menus": {
 			"commandPalette": [
 				{
+					"command": "rdb.openRdbFile",
+					"when": "true"
+				},
+				{
 					"command": "rdb.init",
 					"when": "workbenchState == workspace"
 				},
@@ -70,8 +81,23 @@
 					"command": "rdb.workspaceInit",
 					"when": "workbenchState != workspace"
 				}
+			],
+			"explorer/context": [
+				{
+					"command": "rdb.openRdbFile",
+					"when": "resourceExtname == .rdb",
+					"group": "navigation"
+				}
 			]
-		}
+		},
+		"languages": [
+			{
+				"id": "rdb",
+				"extensions": [".rdb"],
+				"aliases": ["RDB", "rdb"],
+				"configuration": "./language-configuration.json"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

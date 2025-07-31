@@ -69,6 +69,54 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('rdb.workspaceInit', _ => {
 		vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.parse('rdb:/'), name: "Rdb - Sample" });
 	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('rdb.openRdbFile', async (uri?: vscode.Uri) => {
+		let selectedUri: vscode.Uri | undefined = uri;
+		
+		// If no URI is provided (called from command palette), show file picker
+		if (!selectedUri) {
+			const options: vscode.OpenDialogOptions = {
+				canSelectMany: false,
+				canSelectFiles: true,
+				canSelectFolders: false,
+				openLabel: 'Open RDB File',
+				filters: {
+					'RDB Files': ['rdb'],
+					'All Files': ['*']
+				}
+			};
+
+			const fileUri = await vscode.window.showOpenDialog(options);
+			if (fileUri && fileUri[0]) {
+				selectedUri = fileUri[0];
+			} else {
+				return; // User cancelled
+			}
+		}
+
+		if (selectedUri) {
+			const filePath = selectedUri.fsPath;
+			const fileName = selectedUri.path.split('/').pop() || 'Unknown.rdb';
+			
+			// Initialize the RDB with the selected file
+			if (rdb.isClientReady()) {
+				try {
+					await rdb.openRdbFile(filePath);
+					// Add the RDB as a workspace folder
+					vscode.workspace.updateWorkspaceFolders(
+						vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0, 
+						0, 
+						{ uri: vscode.Uri.parse('rdb:/'), name: `RDB - ${fileName}` }
+					);
+					vscode.window.showInformationMessage(`RDB file "${fileName}" opened successfully`);
+				} catch (error) {
+					vscode.window.showErrorMessage(`Failed to open RDB file: ${error}`);
+				}
+			} else {
+				vscode.window.showErrorMessage('RDB client is not initialized');
+			}
+		}
+	}));
 }
 
 /* export async function deactivate() {

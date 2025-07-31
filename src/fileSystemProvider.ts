@@ -59,9 +59,6 @@ export class Rdb implements vscode.FileSystemProvider {
 		try {
 			this.client = new GrpcRdbClient(SERVER_ADDRESS);
 			console.log('gRPC client initialized successfully');
-			this.client.openRDB({ rdbName: 'CESTAK.RDB' }).then(response => {
-				console.log('RDB opened successfully:', response);
-			});
 		} catch (error) {
 			console.error('Error initializing gRPC client:', error);
 		}
@@ -308,5 +305,17 @@ export class Rdb implements vscode.FileSystemProvider {
 			default:
 				return `${chapter.chapterNumber.toString().padStart(4, '0')} ${chapter.chapterType.trim()} ${chapter.chapterName.trim()}.pas`;
 		}
+	}
+
+	public async openRdbFile(filePath: string): Promise<void> {
+		if (!this.client) {
+			throw new Error('gRPC client is not initialized');
+		}
+		const response = await this.client.openRDB({ rdbName: filePath });
+		console.log('OpenRDB response: ', response);
+	}
+
+	public isClientReady(): boolean {
+		return this.client !== undefined;
 	}
 }
