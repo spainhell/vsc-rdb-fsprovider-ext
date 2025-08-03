@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Rdb } from './fileSystemProvider';
+import { highlightControlCharacters } from './decorations/decor';
 
 let rdb: Rdb;
 
@@ -117,13 +118,25 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	}));
+
+	vscode.window.onDidChangeActiveTextEditor(editor => {
+    if (editor) {
+        highlightControlCharacters(editor);
+    }
+});
+
+	vscode.workspace.onDidChangeTextDocument(event => {
+		const editor = vscode.window.activeTextEditor;
+		if (editor && event.document === editor.document) {
+			highlightControlCharacters(editor);
+		}
+	});
 }
 
 /* export async function deactivate() {
 	console.log('Rdb says "Goodbye"');
 	await rdb.close();
 }*/
-
 
 function randomData(lineCnt: number, lineLen = 155): Buffer {
 	const lines: string[] = [];
